@@ -1,5 +1,7 @@
 # Transparent Policy Block Analyzer
 
+<img src="screenshot.png" width="600px">
+
 What does it do? Have you ever wanted to run NGINX App Protect in transparent mode, and be able to determine what requests _would_ be blocked if it were in blocking mode? Now you can.
 
 This utility receives App Protect WAF's syslog messages and performs analysis to determine if your requests would be blocked given your specific policy. 
