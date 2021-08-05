@@ -95,4 +95,4 @@ docker run --rm frapsoft/nikto -h http://host.docker.internal
 ```
 
 ## Attributions
-Special thanks to @liorm39 for documenting the block determination logic and his support.
+Special thanks to [Lior Moscovici](https://github.com/liorm39) for documenting the block determination logic and his support.
