@@ -1,0 +1,13 @@
+version: '3'
+services:
+    nap:
+        build:
+            context: .
+        restart: unless-stopped
+        ports:
+            - "80:80"
+    web:
+        image: bkimminich/juice-shop
+        restart: unless-stopped
+        ports:
+            - "3300:3000"

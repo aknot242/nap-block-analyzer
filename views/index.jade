@@ -1,0 +1,10 @@
+extends layout
+
+block content
+  img(src="images/NGINX-App-Protect-horiz-black-type-1050x208.png", width="400")
+  h1= title
+  button(onclick="clearMessages();") Clear
+  p Last Update: 
+    span#time
+  p Messages
+    ul#messages
