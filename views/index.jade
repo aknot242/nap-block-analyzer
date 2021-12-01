@@ -3,8 +3,22 @@ extends layout
 block content
   img(src="images/NGINX-App-Protect-horiz-black-type-1050x208.png", width="400")
   h1= title
-  button(onclick="clearMessages();") Clear
-  p Last Update: 
+  div.row-item
+    button(onclick="clearMessages();") Clear
+  div.row-item
+    input#show-alarms(type='checkbox', name='show-alarms', checked=false, onclick="toggleAlarms(this);")
+    span Show Alarms
+  p 
+    span#log-count 0
+    span &nbsp;Log Messages (last update 
     span#time
-  p Messages
-    ul#messages
+    |)
+    table
+      thead
+        tr
+          th SupportID
+          th Request
+          th Response
+          th.reason Reason
+      tbody#messages
+
