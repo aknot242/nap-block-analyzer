@@ -4,7 +4,7 @@
 
 What does it do? Have you ever wanted to run NGINX App Protect in transparent mode, and be able to determine what requests _would_ be blocked if it were in blocking mode? Now you can.
 
-This utility receives App Protect WAF's syslog messages and performs analysis to determine if your requests would be blocked given your specific policy. 
+This utility receives App Protect WAF's syslog messages and performs analysis to determine if your requests would be blocked given your specific policy. By default, log messages for transactions that trigger alarms but would not be blocked are omitted from the UI by default. If you would like to see these alarm-only messages, click the "Show Alarms" checkbox. 
 
 ## Requirements
 - NGINX App Protect WAF 3.3 or greater (the policy export utility is required)

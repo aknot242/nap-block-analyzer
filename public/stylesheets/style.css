@@ -3,6 +3,39 @@ body {
   font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
 }
 
+.row-item {
+  margin-bottom: 5px;
+}
+
 a {
   color: #00B7FF;
+}
+
+table,th,td {
+  border: 1px solid black;
+}
+
+th,td {
+  padding: 4px;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  vertical-align: middle;
+}
+
+th.reason {
+  width: 400px;
+}
+
+td {
+  vertical-align: top;
+}
+
+td.center {
+  text-align: center;
 }

@@ -64,6 +64,10 @@ wss.on('connection', (ws) => {
         policyUtils.clearMessages()
         sendLog(policyUtils.sendMessages())
         break
+      case "refresh":
+        console.log("Refreshing messages...")
+        sendLog(policyUtils.sendMessages())
+        break
     }
   });
   sendLog(policyUtils.sendMessages())

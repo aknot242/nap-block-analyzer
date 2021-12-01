@@ -1,22 +1,36 @@
-# For Alpine 3.10:
-FROM alpine:3.10
+# For Ubuntu 20.04:
+FROM ubuntu:focal
 
 # Download certificate and key from the customer portal (https://my.f5.com)
 # and copy to the build context:
-COPY nginx-repo.key /etc/apk/cert.key
-COPY nginx-repo.crt /etc/apk/cert.pem
+COPY nginx-repo.crt nginx-repo.key /etc/ssl/nginx/
+
+# Install prerequisite packages:
+RUN apt-get update && apt-get install -y apt-transport-https lsb-release ca-certificates wget gnupg2
 
 # Download and add the NGINX signing key:
-RUN wget -O /etc/apk/keys/nginx_signing.rsa.pub https://cs.nginx.com/static/keys/nginx_signing.rsa.pub
+RUN wget https://cs.nginx.com/static/keys/nginx_signing.key && apt-key add nginx_signing.key
 
 # Add NGINX Plus repository:
-RUN printf "https://plus-pkgs.nginx.com/alpine/v`egrep -o '^[0-9]+\.[0-9]+' /etc/alpine-release`/main\n" | tee -a /etc/apk/repositories
+RUN printf "deb https://pkgs.nginx.com/plus/ubuntu `lsb_release -cs` nginx-plus\n" | tee /etc/apt/sources.list.d/nginx-plus.list
 
-# Update the repository and install the most recent version of the NGINX App Protect package (which includes NGINX Plus):
-RUN apk update && apk add nginx-plus app-protect
+# Add NGINX App-protect repository:
+RUN printf "deb https://pkgs.nginx.com/app-protect/ubuntu `lsb_release -cs` nginx-plus\n" | tee /etc/apt/sources.list.d/nginx-app-protect.list
+
+# Download and add the NGINX Security updates signing key:
+RUN wget https://cs.nginx.com/static/keys/app-protect-security-updates.key && apt-key add app-protect-security-updates.key
+
+# Add NGINX Security Updates repository:
+RUN printf "deb https://pkgs.nginx.com/app-protect-security-updates/ubuntu/ `lsb_release -cs` nginx-plus\n" | tee /etc/apt/sources.list.d/app-protect-security-updates.list
+
+# Download the apt configuration to `/etc/apt/apt.conf.d`:
+RUN wget -P /etc/apt/apt.conf.d https://cs.nginx.com/static/files/90pkgs-nginx
+
+# Update the repository and install the most recent version of the NGINX App Protect WAF package (which includes NGINX Plus):
+RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y app-protect app-protect-attack-signatures app-protect-threat-campaigns
 
 # Remove nginx repository key/cert from docker
-RUN rm -rf /etc/apk/cert.*
+RUN rm -rf /etc/ssl/nginx
 
 # Forward request logs to Docker log collector:
 RUN ln -sf /dev/stdout /var/log/nginx/access.log \

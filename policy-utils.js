@@ -3,10 +3,10 @@ const he = require("he")
 const fs = require("fs")
 
 let defaultPolicy = {}
-let policyMessages = new Set()
+let transactionMessages = new Set()
 let signatureDB = {}
 
-exports.clearMessages = () => policyMessages.clear()
+exports.clearMessages = () => transactionMessages.clear()
 
 const SIGNATURES_FILE = "signature-report.json"
 const POLICY_FILE = "full-policy-export.json"
@@ -38,7 +38,7 @@ exports.parseNapMessage = (data) => {
         // if the default for malicious bot class is "block"
         // AND if there is no exception for the malicious bot in the policy, it will be blocked
         // OR if it IS defined in there and is explicitly set to action = block, it will be blocked
-        if (maliciousBotClassSettings?.action?.toLowerCase() === "block" && (botSig === undefined || botSig.action?.toLowerCase() === "block")) policyMessages.add({ block: true, message: `Request ${msgJson.supportId} WOULD be blocked (${msgJson.clientClass}, ${msgJson.botSignatureName}).` })
+        if (maliciousBotClassSettings?.action?.toLowerCase() === "block" && (botSig === undefined || botSig.action?.toLowerCase() === "block")) transactionMessages.add({ block: true, message: `Request ${msgJson.supportId} WOULD be blocked (${msgJson.clientClass}, ${msgJson.botSignatureName}).` })
     } else {
 
         const xmlParserOptions = {
@@ -55,38 +55,60 @@ exports.parseNapMessage = (data) => {
             cdataPositionChar: "\\c",
             parseTrueNumberOnly: false,
             arrayMode: true,
-            attrValueProcessor: (val, attrName) => he.decode(val, { isAttributeValue: true }),
-            tagValueProcessor: (val, tagName) => he.decode(val),
+            attrValueProcessor: (val) => he.decode(val, { isAttributeValue: true }),
+            tagValueProcessor: (val) => he.decode(val),
             stopNodes: ["parse-me-as-string"]
         }
 
         let jsonObj
         try {
+            let requestViolations = []
+            let responseViolations = []
             if (XmlParser.validate(msgJson.violationDetails) === true) { //optional (it'll return an object in case it's not valid)
                 jsonObj = XmlParser.parse(msgJson.violationDetails, xmlParserOptions)
-                processRequestViolations(jsonObj.BAD_MSG[0]["request-violations"][0].violation, msgJson.supportId)
+                if (Array.isArray(jsonObj.BAD_MSG[0]["request-violations"])) {
+                    requestViolations = deDupeRequestViolations(jsonObj.BAD_MSG[0]["request-violations"].flatMap(item => item.violation))
+                }
+                if (Array.isArray(jsonObj.BAD_MSG[0]["response_violations"])) {
+                    responseViolations = jsonObj.BAD_MSG[0]["response_violations"].flatMap(item => item.violation)
+                }
             }
+            processViolations(requestViolations, responseViolations, msgJson.supportId)
         } catch (error) {
-            console.error(`Error parsing Xml value: ${jsonObj.BAD_MSG}`)
+            console.error(`Error parsing Xml value: ${msgJson.violationDetails}`)
         }
     }
 
     return exports.sendMessages()
 }
 
-const processRequestViolations = (requestViolations, supportId) => {
-    let violationBlockStatus = false
+// Violations with duplicate signatures (this is a bug WAFMC-4747) handle this by merging violations by signature ID to eliminate duplicates
+const deDupeRequestViolations = (requestViolations) => {
+    return requestViolations.filter((violation, index, self) =>
+        index === self.findIndex((v) => (
+            v.sig_data[0].sig_id === violation.sig_data[0].sig_id
+        ))
+    )
+}
 
+const processViolations = (requestViolations, responseViolations, supportId) => {
+    let transactionResult = {
+        supportId: supportId,
+        requestBlock: false,
+        responseBlock: false,
+        requestMessages: [],
+        responseMessages: []
+    }
     requestViolations.forEach(violation => {
         try {
             switch (violation.viol_name) {
                 case "VIOL_ATTACK_SIGNATURE":
                     // for each sig_id, look up in the signatures file. would block = true if the accuracy is "high"
-                    const lookupViolation = violation.sig_data.forEach(sigdata => {
+                    violation.sig_data.forEach(sigdata => {
                         const sigDetails = signatureDB.signatures.find(s => s.signatureId === sigdata.sig_id)
                         if (sigDetails !== undefined && sigDetails.accuracy.toLowerCase() === "high") {
-                            violationBlockStatus = true
-                            policyMessages.add({ block: true, message: `Request ${supportId} WOULD be blocked (high accuracy signature ${sigdata.sig_id}).` })
+                            transactionResult.requestBlock = true
+                            transactionResult.requestMessages.push(`High accuracy Request signature ${sigdata.sig_id}`)
                             return
                         }
                     })
@@ -98,8 +120,8 @@ const processRequestViolations = (requestViolations, supportId) => {
                     if (defaultPolicy.policy["blocking-settings"]["violations"].find(viol => viol.name === violation.viol_name) !== undefined) {
                         const lookupViolation = defaultPolicy.policy["blocking-settings"]["violations"].find(viol => viol.name === violation.viol_name)
                         if (lookupViolation.block) {
-                            violationBlockStatus = true
-                            policyMessages.add({ block: true, message: `Request ${supportId} WOULD be blocked (violation '${violation.viol_name}'set to 'block').` })
+                            transactionResult.requestBlock = true
+                            transactionResult.requestMessages.push(`Request Violation '${violation.viol_name}' set to 'block'`)
                             return
                         }
                     }
@@ -108,11 +130,39 @@ const processRequestViolations = (requestViolations, supportId) => {
             console.error(`${error} violation: ${JSON.stringify(violation)}`)
         }
     })
-    if (!violationBlockStatus) policyMessages.add({ block: false, message: `Request ${supportId} WOULD NOT be blocked.` })
+    responseViolations.forEach(violation => {
+        try {
+            switch (violation.viol_name) {
+                case "VIOL_ATTACK_SIGNATURE":
+                    // for each sig_id, look up in the signatures file. would block = true if the accuracy is "high"
+                    violation.sig_data.forEach(sigdata => {
+                        const sigDetails = signatureDB.signatures.find(s => s.signatureId === sigdata.sig_id)
+                        if (sigDetails !== undefined && sigDetails.accuracy.toLowerCase() === "high") {
+                            transactionResult.responseBlock = true
+                            transactionResult.responseMessages.push(`High accuracy Response signature ${sigdata.sig_id}`)
+                            return
+                        }
+                    })
+                    break
+                default:
+                    if (defaultPolicy.policy["blocking-settings"]["violations"].find(viol => viol.name === violation.viol_name) !== undefined) {
+                        const lookupViolation = defaultPolicy.policy["blocking-settings"]["violations"].find(viol => viol.name === violation.viol_name)
+                        if (lookupViolation.block) {
+                            transactionResult.responseBlock = true
+                            transactionResult.responseMessages.push(`Response Violation '${violation.viol_name}' set to 'block'`)
+                            return
+                        }
+                    }
+            }
+        } catch (error) {
+            console.error(`${error} violation: ${JSON.stringify(violation)}`)
+        }
+    })
+    transactionMessages.add(transactionResult)
 }
 
 exports.sendMessages = () => {
-    return JSON.stringify({ messages: policyMessages }, MapSet_toJSON)
+    return JSON.stringify({ messages: transactionMessages }, MapSet_toJSON)
 }
 
 const b64Decode = (txt) => {
